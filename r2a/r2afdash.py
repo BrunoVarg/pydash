@@ -116,13 +116,12 @@ class R2AFDASH(IR2A):
             # Take the average of the last K throughputs
             media = 0
             step = 1
-            for ri in self.throughputs[::-1]:
-                media += ri
-
-                step += 1
-                if step == K:
-                    break
-            media /= K
+            last_throughputs = self.throughputs[::-1]
+            last_k_throughputs = []
+            for x in range(len(last_throughputs), K):
+                last_k_throughputs.append(last_throughputs[x])
+                                                 
+            media = mean(last_k_throughputs)
 
             b_next = F*media
 
