@@ -108,7 +108,8 @@ class R2AFDASH(IR2A):
             step = 1
             last_throughputs = self.throughputs[::-1]
             last_k_throughputs = []
-            for x in range(len(last_throughputs), K):
+            # print(last_throughputs)
+            for x in range(min(len(last_throughputs), K)):
                 last_k_throughputs.append(last_throughputs[x])
                                                  
             media = mean(last_k_throughputs)
