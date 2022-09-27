@@ -72,26 +72,16 @@ class R2AFDASH(IR2A):
             else:
                 STEADY = True
 
-            r1, r2, r3, r4, r5, r6, r7, r8, r9 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-            
-            if SHORT and FALLING:
-                r1 = 1
-            elif CLOSE and FALLING:
-                r2 = 1
-            elif LONG and FALLING:
-                r3 = 1
-            elif SHORT and STEADY:
-                r4 = 1
-            elif CLOSE and STEADY:
-                r5 = 1
-            elif LONG and STEADY:
-                r6 = 1
-            elif SHORT and RISING:
-                r7 = 1
-            elif CLOSE and RISING:
-                r8 = 1
-            elif LONG and RISING:
-                r9 = 1
+            # True -> 1 | False -> 0
+            r1 = int(SHORT and FALLING)
+            r2 = int(CLOSE and FALLING)
+            r3 = int(LONG and FALLING)
+            r4 = int(SHORT and STEADY)
+            r5 = int(CLOSE and STEADY)
+            r6 = int(LONG and STEADY)
+            r7 = int(SHORT and RISING)
+            r8 = int(CLOSE and RISING)
+            r9 = int(LONG and RISING)
 
             # Increase
             I = math.sqrt(r9**2)
