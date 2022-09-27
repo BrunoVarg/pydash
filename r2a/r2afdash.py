@@ -113,9 +113,15 @@ class R2AFDASH(IR2A):
             # K represents the last throughputs to analyze
             K = 4
 
+            # Take the average of the last K throughputs
             media = 0
-            for ri in self.throughputs:
+            step = 1
+            for ri in self.throughputs[::-1]:
                 media += ri
+
+                step += 1
+                if step == K:
+                    break
             media /= K
 
             b_next = F*media
