@@ -17,6 +17,7 @@ class R2AFDASH(IR2A):
         self.buffer_size_current = 0
         self.buffer_size_previous = 0
         self.first = True
+        self.T = 35
 
         
 
@@ -51,37 +52,22 @@ class R2AFDASH(IR2A):
             self.buffer_size_previous = self.buffer_size_current
 
             # update the current buffer size
-            self.buffer_size_current = buffer_list[-1][1]-1
+            self.buffer_size_current = buffer_list[-1][1]
 
-            # target buffering time = 35
-            SHORT, LONG, CLOSE = [False, False, False]
-            FALLING, STEADY, RISING = [False, False, False]
 
-            if self.buffer_size_current < 35:
-                SHORT = True
-            elif self.buffer_size_current >= 50:
-                LONG = True
-            else:
-                CLOSE = True
-
-            delta_buffer_size = self.buffer_size_current - self.buffer_size_previous
-            if delta_buffer_size < 0:
-                FALLING = True
-            elif delta_buffer_size > 0:
-                RISING = True
-            else:
-                STEADY = True
-
-            # True -> 1 | False -> 0
-            r1 = int(SHORT and FALLING)
-            r2 = int(CLOSE and FALLING)
-            r3 = int(LONG and FALLING)
-            r4 = int(SHORT and STEADY)
-            r5 = int(CLOSE and STEADY)
-            r6 = int(LONG and STEADY)
-            r7 = int(SHORT and RISING)
-            r8 = int(CLOSE and RISING)
-            r9 = int(LONG and RISING)
+            
+            SHORT, CLOSE, LONG = self.get_buff_var_size()
+            FALLING, STEADY, RISING = self.get_buff_var_diff()
+            
+            r1 = min(SHORT , FALLING)
+            r2 = min(CLOSE , FALLING)
+            r3 = min(LONG , FALLING)
+            r4 = min(SHORT , STEADY)
+            r5 = min(CLOSE , STEADY)
+            r6 = min(LONG , STEADY)
+            r7 = min(SHORT , RISING)
+            r8 = min(CLOSE , RISING)
+            r9 = min(LONG , RISING)
 
             # Increase
             I = math.sqrt(r9**2)
@@ -101,14 +87,13 @@ class R2AFDASH(IR2A):
             F = (N2 * R + N1 * SR + Z * NC + P1 * SI + P2 * I)/(SR + R + NC + SI + I)
 
             # K represents the last throughputs to analyze
-            K = 4
+            K = 3
 
             # Take the average of the last K throughputs
             media = 0
-            step = 1
             last_throughputs = self.throughputs[::-1]
             last_k_throughputs = []
-            # print(last_throughputs)
+
             for x in range(min(len(last_throughputs), K)):
                 last_k_throughputs.append(last_throughputs[x])
                                                  
@@ -116,27 +101,26 @@ class R2AFDASH(IR2A):
 
             b_next = F*media
 
+            b_n = self.qi[0]
             self.idx_qi_current = 0
-            for quality in self.qi:
-                if self.idx_qi_current != 19:
-                    if quality < b_next:
-                        self.idx_qi_current += 1
+            n = len(self.qi)
+            for i in range(len(self.qi)):
+                if self.qi[n-i-1] < b_next:
+                    b_n = self.qi[n-i-1]
+                    self.idx_qi_current = n-i-1
+                    break
 
-
-            # Last throughput
-            media_throughput = self.throughputs[-1]/K
-            quality_current = self.qi[self.idx_qi_current]
-            quality_previous = self.qi[self.idx_qi_previous]
+            b_i = self.qi[self.idx_qi_previous]
 
             # verify qualities
-            self.predict_current_buffer = self.buffer_size_current + (media_throughput/quality_current)*60
-            self.predict_previous_buffer = self.buffer_size_current + (media_throughput/quality_previous)*60
-
-            if quality_current > quality_previous and self.predict_current_buffer < 35:
-                self.idx_qi_current = self.idx_qi_previous
-            elif quality_current < quality_previous and self.predict_previous_buffer > 35:
-                self.idx_qi_current = self.idx_qi_previous
+            self.predict_current_buffer = self.buffer_size_current + (media/b_n)*60
+            self.predict_previous_buffer = self.buffer_size_current + (media/b_i)*60
             
+            if (b_n > b_i and self.predict_current_buffer < self.T):
+                self.idx_qi_current = self.idx_qi_previous
+            elif (b_n < b_i and self.predict_previous_buffer > self.T):
+                self.idx_qi_current = self.idx_qi_previous
+
             self.idx_qi_previous = self.idx_qi_current
 
         else:
@@ -155,6 +139,70 @@ class R2AFDASH(IR2A):
         self.throughputs.append(bit_length / variation_time)
 
         self.send_up(msg)
+    
+
+    def get_buff_var_size(self):
+        buffer_list = self.whiteboard.get_playback_buffer_size()
+
+        self.buffer_size_current = buffer_list[-1][1]
+        self.buffer_size_previous = self.buffer_size_current
+        T = self.T
+        buffer = self.buffer_size_current
+        SHORT, CLOSE, LONG = [0, 0, 0]
+
+        if buffer <= 2*T/3:
+            SHORT = 1
+        elif buffer > T:
+            SHORT = 0
+        else:
+            SHORT = -3 / T * buffer + 3
+        
+        if buffer < 2*T/3 or buffer > 4*T:
+            CLOSE = 0
+        elif buffer < T:
+            CLOSE = 3/T*buffer-2
+        else:
+            CLOSE = -buffer/3*T + 4/3
+        
+        if buffer > 4*T:
+            LONG = 1
+        elif buffer < T:
+            LONG = 0
+        else:
+             LONG = buffer/3*T -1/3
+        
+        return SHORT, CLOSE, LONG
+    
+    def get_buff_var_diff(self):
+        delta_buffer_size = self.buffer_size_current - self.buffer_size_previous
+        FALLING, STEADY, RISING = [0, 0, 0]
+        T = self.T
+        LEFT = -2*T/3
+        MID = 0
+        RIGHT = 4*T
+        if delta_buffer_size < LEFT:
+            FALLING = 1
+        elif delta_buffer_size > MID:
+            FALLING = 0
+        else:
+            FALLING = -3/(2*T) * delta_buffer_size
+        
+        if delta_buffer_size < LEFT or delta_buffer_size > RIGHT:
+            STEADY = 0
+        elif delta_buffer_size < MID:
+            STEADY = -3/(2*T) * delta_buffer_size
+        else:
+            STEADY = -delta_buffer_size/(4*T) +1
+        
+        if delta_buffer_size < MID:
+            RISING = 0
+        elif delta_buffer_size > RIGHT:
+            RISING = 1
+        else:
+            RISING = delta_buffer_size/(RIGHT)
+        
+
+        return FALLING, STEADY, RISING
 
     def initialize(self):
         pass
